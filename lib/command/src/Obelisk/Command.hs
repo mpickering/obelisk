@@ -93,6 +93,7 @@ data ObCommand
    | ObCommand_Repl
    | ObCommand_Watch
    | ObCommand_Internal ObInternal
+   | ObCommand_IdeArgs
    deriving Show
 
 data ObInternal
@@ -127,6 +128,7 @@ obCommand cfg = hsubparser
       , command "thunk" $ info (ObCommand_Thunk <$> thunkCommand) $ progDesc "Manipulate thunk directories"
       , command "repl" $ info (pure ObCommand_Repl) $ progDesc "Open an interactive interpreter"
       , command "watch" $ info (pure ObCommand_Watch) $ progDesc "Watch current project for errors and warnings"
+      , command "ide-args" $ info (pure ObCommand_IdeArgs) $ progDesc "Dump arguments which can be used to set up haskell-ide-engine"
       ])
   <|> subparser
     (mconcat
@@ -347,6 +349,7 @@ ob = \case
     ThunkCommand_Pack thunks -> forM_ thunks packThunk
   ObCommand_Repl -> runRepl
   ObCommand_Watch -> inNixShell' $ static runWatch
+  ObCommand_IdeArgs -> runIdeArgs
   ObCommand_Internal icmd -> case icmd of
     ObInternal_RunStaticIO k -> liftIO (unsafeLookupStaticPtr @(ObeliskT IO ()) k) >>= \case
       Nothing -> failWith $ "ObInternal_RunStaticIO: no such StaticKey: " <> T.pack (show k)
