@@ -14,6 +14,7 @@ import qualified Data.List as L
 import qualified Data.List.NonEmpty as NE
 import Data.Maybe
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import Distribution.PackageDescription.Parsec (parseGenericPackageDescription)
 import Distribution.Parsec.ParseResult (runParseResult)
 import Distribution.Pretty
@@ -54,7 +55,7 @@ data CabalPackageInfo = CabalPackageInfo
 run :: ObeliskT IO ()
 run = do
   pkgs <- getLocalPkgs
-  withGhciScript pkgs $ \dotGhciPath -> do
+  withGhciScript pkgs $ \args dotGhciPath -> do
     freePort <- getFreePort
     assets <- withProjectRoot "." $ \root -> do
       let importableRoot = if "/" `isInfixOf` root
@@ -80,7 +81,7 @@ run = do
         else readProcessAndLogStderr Debug $
           proc "nix" ["eval", "-f", root, "passthru.staticFilesImpure", "--raw"]
     putLog Debug $ "Assets impurely loaded from: " <> assets
-    runGhcid dotGhciPath $ Just $ unwords
+    runGhcid args dotGhciPath $ Just $ unwords
       [ "Obelisk.Run.run"
       , show freePort
       , "(runServeAsset " ++ show assets ++ ")"
@@ -91,13 +92,22 @@ run = do
 runRepl :: MonadObelisk m => m ()
 runRepl = do
   pkgs <- getLocalPkgs
-  withGhciScript pkgs $ \dotGhciPath -> do
-    runGhciRepl dotGhciPath
+  withGhciScript pkgs $ \args dotGhciPath -> do
+    runGhciRepl args dotGhciPath
 
 runWatch :: MonadObelisk m => m ()
 runWatch = do
   pkgs <- getLocalPkgs
-  withGhciScript pkgs $ \dotGhciPath -> runGhcid dotGhciPath Nothing
+  withGhciScript pkgs $ \args dotGhciPath -> runGhcid args dotGhciPath Nothing
+
+
+-- | A target which outputs the flags which would be passed to `ghci` when
+-- using `ob run`.
+runIdeArgs :: MonadObelisk m => m ()
+runIdeArgs = do
+  pkgs <- getLocalPkgs
+  withGhciScript pkgs $ \args _
+    -> liftIO $ T.putStrLn (T.unwords args)
 
 -- | Relative paths to local packages of an obelisk project
 -- TODO a way to query this
@@ -158,7 +168,9 @@ withUTF8FileContentsM fp f = do
 withGhciScript
   :: MonadObelisk m
   => [FilePath] -- ^ List of packages to load into ghci
-  -> (FilePath -> m ()) -- ^ Action to run with the path to generated temporory .ghci
+  -> ([T.Text] -> FilePath -> m ()) -- ^ Action to run with
+                                  --    1. Arguments to pass to ghc
+                                  --    2. The path to generated temporary .ghci
   -> m ()
 withGhciScript pkgs f = do
   (pkgDirErrs, packageInfos) <- fmap partitionEithers $ forM pkgs $ \pkg -> do
@@ -172,17 +184,22 @@ withGhciScript pkgs f = do
     putLog Warning $ T.pack $ "Failed to find pkgs in " <> intercalate ", " pkgDirErrs
 
   let extensions = packageInfos >>= _cabalPackageInfo_defaultExtensions
+
       languageFromPkgs = L.nub $ mapMaybe _cabalPackageInfo_defaultLanguage packageInfos
       -- NOTE when no default-language is present cabal sets Haskell98
       language = NE.toList $ fromMaybe (Haskell98 NE.:| []) $ NE.nonEmpty languageFromPkgs
-      extensionsLine = if extensions == mempty
-        then ""
-        else ":set " <> intercalate " " ((("-X" <>) . prettyShow) <$> extensions)
+      languageArg = T.pack . ("-X" <>) . prettyShow <$> language
+
+      extensionArgs = if extensions == mempty
+        then []
+        else (T.pack . ("-X" <>) . prettyShow <$> extensions)
+
+      includeArg = T.pack $ "-i" <> intercalate ":" (packageInfos >>= rootedSourceDirs)
+
+      args = "-no-user-package-db" : includeArg : (languageArg ++ extensionArgs)
+
       dotGhci = unlines $
-        [ ":set -i" <> intercalate ":" (packageInfos >>= rootedSourceDirs)
-        , extensionsLine
-        , ":set " <> intercalate " " (("-X" <>) . prettyShow <$> language)
-        , ":load Backend Frontend"
+        [ ":load Backend Frontend"
         , "import Obelisk.Run"
         , "import qualified Frontend"
         , "import qualified Backend"
@@ -191,7 +208,7 @@ withGhciScript pkgs f = do
   withSystemTempDirectory "ob-ghci" $ \fp -> do
     let dotGhciPath = fp </> ".ghci"
     liftIO $ writeFile dotGhciPath dotGhci
-    f dotGhciPath
+    f args dotGhciPath
 
   where
     rootedSourceDirs pkg = NE.toList $
@@ -204,22 +221,27 @@ warnDifferentLanguages _ = return ()
 -- | Run ghci repl
 runGhciRepl
   :: MonadObelisk m
-  => FilePath -- ^ Path to .ghci
+  => [T.Text] -- ^ Arguments to pass to GHC
+  -> FilePath -- ^ Path to .ghci
   -> m ()
-runGhciRepl dotGhci = inProjectShell "ghc" $ unwords $ "ghci" : ["-no-user-package-db", "-ghci-script", dotGhci]
+runGhciRepl args dotGhci =
+  inProjectShell "ghc"
+    $ T.unpack . T.unwords $ "ghci" : ["-ghci-script", T.pack dotGhci] ++ args
 
 -- | Run ghcid
 runGhcid
   :: MonadObelisk m
-  => FilePath -- ^ Path to .ghci
+  => [T.Text] -- ^ GHC arguments
+  -> FilePath -- ^ Path to .ghci
   -> Maybe String -- ^ Optional command to run at every reload
   -> m ()
-runGhcid dotGhci mcmd = callCommand $ unwords $ "ghcid" : opts
+runGhcid args dotGhci mcmd = callCommand $ unwords $ "ghcid" : opts
   where
+    ghci_args = T.unpack (T.unwords args)
     opts =
       [ "-W"
       --TODO: The decision of whether to use -fwarn-redundant-constraints should probably be made by the user
-      , "--command='ghci -Wall -ignore-dot-ghci -fwarn-redundant-constraints -no-user-package-db -ghci-script " <> dotGhci <> "' "
+      , "--command='ghci -Wall -ignore-dot-ghci -fwarn-redundant-constraints -no-user-package-db -ghci-script " <> dotGhci <> " " <> ghci_args <> "' "
       , "--reload=config"
       , "--outputfile=ghcid-output.txt"
       ] <> testCmd

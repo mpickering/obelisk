@@ -94,6 +94,7 @@ data ObCommand
    | ObCommand_Watch
    | ObCommand_Shell ShellOpts
    | ObCommand_Internal ObInternal
+   | ObCommand_IdeArgs
    deriving Show
 
 data ObInternal
@@ -129,6 +130,7 @@ obCommand cfg = hsubparser
       , command "repl" $ info (pure ObCommand_Repl) $ progDesc "Open an interactive interpreter"
       , command "watch" $ info (pure ObCommand_Watch) $ progDesc "Watch current project for errors and warnings"
       , command "shell" $ info (ObCommand_Shell <$> shellOpts) $ progDesc "Enter a shell with project dependencies"
+      , command "ide-args" $ info (pure ObCommand_IdeArgs) $ progDesc "Dump arguments which can be used to set up haskell-ide-engine"
       ])
   <|> subparser
     (mconcat
@@ -369,6 +371,7 @@ ob = \case
   ObCommand_Watch -> inNixShell' $ static runWatch
   ObCommand_Shell so -> withProjectRoot "." $ \root ->
     projectShell root False (_shellOpts_shell so) (_shellOpts_command so)
+  ObCommand_IdeArgs -> runIdeArgs
   ObCommand_Internal icmd -> case icmd of
     ObInternal_RunStaticIO k -> liftIO (unsafeLookupStaticPtr @(ObeliskT IO ()) k) >>= \case
       Nothing -> failWith $ "ObInternal_RunStaticIO: no such StaticKey: " <> T.pack (show k)
