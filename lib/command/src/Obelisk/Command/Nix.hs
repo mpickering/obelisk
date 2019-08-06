@@ -38,6 +38,7 @@ import Data.Maybe
 import Data.Monoid ((<>))
 import qualified Data.Text as T
 import System.Process (proc)
+import Control.Monad.Fail
 
 import Obelisk.App (MonadObelisk)
 import Obelisk.CliApp
@@ -158,7 +159,7 @@ data NixCmd
 instance Default NixCmd where
   def = NixCmd_Build def
 
-nixCmd :: MonadObelisk m => NixCmd -> m FilePath
+nixCmd :: (MonadFail m, MonadObelisk m) => NixCmd -> m FilePath
 nixCmd cmdCfg = withSpinner' ("Running " <> cmd <> desc) (Just $ const $ "Built " <> desc) $ do
   output <- readProcessAndLogStderr Debug $ proc (T.unpack cmd) $ options
   -- Remove final newline that Nix appends

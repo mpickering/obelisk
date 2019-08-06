@@ -36,9 +36,20 @@ let
         hnix = pkgs.haskell.lib.dontCheck (self.callCabal2nix "hnix" (pkgs.fetchFromGitHub {
           owner = "haskell-nix";
           repo = "hnix";
-          rev = "42afdc21da5d9e076eab57eaa42bfdde938192b8";
-          sha256 = "0psw384dx9bw2dp93xrzw8rd9amvcwgzn64jzzwby7sfspj6k349";
+          rev = "38219591d47ae2cd347bbf21b7d628396485c7c6";
+          sha256 = "1v1g63icw66290lsr8g51gb13dgm3xbgqdq71q2g0v0bfc2nfd1c";
         }) {});
+
+        hnix-store-core = pkgs.haskell.lib.dontCheck (self.callCabal2nix "hnix-store-core" (builtins.fetchTarball {
+          url = "https://hackage.haskell.org/package/hnix-store-core-0.1.0.0/hnix-store-core-0.1.0.0.tar.gz";
+          sha256 = "0ibmqq9i0krjn8mw7h6c38ryyj11f8vyjqqvj72y36ashl9sdiyf";
+        }) {});
+
+        dependent-sum = pkgs.haskell.lib.dontCheck (self.callCabal2nix "dependent-sum" (builtins.fetchTarball {
+          url = "https://hackage.haskell.org/package/dependent-sum-0.4/dependent-sum-0.4.tar.gz";
+          sha256 = "136aq8484zcc06kvy44pbjc6cbmgi790yfhnsnggrskrhj1mkyvx";
+        }) {});
+
       })
 
       pkgs.obeliskExecutableConfig.haskellOverlay

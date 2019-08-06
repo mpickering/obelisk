@@ -41,6 +41,7 @@ import Obelisk.Command.Nix
 import Obelisk.Command.Project
 import Obelisk.Command.Thunk
 import Obelisk.Command.Utils
+import Data.Fix
 
 deployInit
   :: MonadObelisk m
@@ -173,18 +174,7 @@ deployPush deployPath getNixBuilders = do
 deployUpdate :: MonadObelisk m => FilePath -> m ()
 deployUpdate deployPath = updateThunkToLatest (deployPath </> "src") Nothing
 
-keytoolToAndroidConfig :: KeytoolConfig -> HM.HashMap Text (NValueNF Identity)
-keytoolToAndroidConfig conf = runIdentity $ do
-  path <- toValue $ Path $ _keytoolConfig_keystore conf
-  storepass <- toValue $ T.pack $ _keytoolConfig_storepass conf
-  alias <- toValue $ T.pack $ _keytoolConfig_alias conf
-  keypass <- toValue $ T.pack $ _keytoolConfig_keypass conf
-  return $ HM.fromList
-    [ ("storeFile", path)
-    , ("storePassword", storepass)
-    , ("keyAlias", alias)
-    , ("keyPassword", keypass)
-    ]
+keytoolToAndroidConfig = undefined
 
 data PlatformDeployment = Android | IOS
   deriving (Show, Eq)
@@ -194,7 +184,7 @@ renderPlatformDeployment = \case
   Android -> "android"
   IOS -> "ios"
 
-deployMobile :: MonadObelisk m => PlatformDeployment -> [String] -> m ()
+deployMobile :: (Monad m, MonadObelisk m) => PlatformDeployment -> [String] -> m ()
 deployMobile platform mobileArgs = withProjectRoot "." $ \root -> do
   let srcDir = root </> "src"
       configDir = root </> "config"
@@ -225,11 +215,11 @@ deployMobile platform mobileArgs = withProjectRoot "." $ \root -> do
       unless checkKeytoolConfExist $ failWith "Missing android KeytoolConfig"
       keytoolConfContents <- liftIO $ BSL.readFile keytoolConfPath
       liftIO $ putStrLn $ show keytoolConfContents
-      releaseKey <- case eitherDecode keytoolConfContents of
+      releaseKey <- case eitherDecode @() keytoolConfContents of
         Left err -> failWith $ T.pack err
         Right conf -> do
-          let nvset = toValue @(HM.HashMap Text (NValueNF Identity)) @Identity @(NValueNF Identity) $ keytoolToAndroidConfig conf
-          return $ printNix $ runIdentity nvset
+          let nvset = pure @Identity . flip (nvSet @Identity) HM.empty $ keytoolToAndroidConfig conf
+          return $ undefined
       let expr = mconcat
             [ "with (import ", srcDir, " {});"
             , "android.frontend.override (drv: { "

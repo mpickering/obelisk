@@ -19,6 +19,7 @@ import System.Exit (ExitCode(..))
 import System.FilePath ((<.>), (</>))
 import qualified System.Info
 import System.Process (proc)
+import Control.Monad.Fail
 
 import Obelisk.App (MonadObelisk, getObeliskUserStateDir)
 import Obelisk.CliApp

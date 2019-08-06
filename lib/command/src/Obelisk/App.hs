@@ -20,6 +20,7 @@ import Control.Monad.Trans.Class (MonadTrans, lift)
 import Data.Text (Text)
 import System.Directory (XdgDirectory (XdgData), getXdgDirectory)
 import Control.Monad.Log (MonadLog)
+import Control.Monad.Fail
 
 import Obelisk.CliApp
   ( CliConfig
@@ -64,7 +65,11 @@ newtype ObeliskT m a = ObeliskT
     ( Functor, Applicative, Monad, MonadIO, MonadThrow, MonadCatch, MonadMask
     , MonadLog Output -- CliLog
     , MonadError ObeliskError -- CliThrow ObeliskError
-    , HasCliConfig ObeliskError)
+    , HasCliConfig ObeliskError
+    )
+
+instance Monad m => MonadFail (ObeliskT m) where
+  fail = error
 
 instance MonadTrans ObeliskT where
   lift = ObeliskT . lift . lift
@@ -104,6 +109,7 @@ type MonadInfallibleObelisk m =
 type MonadObelisk m =
   ( MonadInfallibleObelisk m
   , CliThrow ObeliskError m
+  , MonadFail m
   )
 
 getObeliskUserStateDir :: IO FilePath

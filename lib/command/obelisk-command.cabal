@@ -17,13 +17,14 @@ library
     , obelisk-cliapp
     , containers
     , data-default
+    , data-fix
     , directory
     , either
     , errors
     , filepath
     , github
     , here
-    , hit
+    , git
     , hnix
     , hpack
     , io-streams

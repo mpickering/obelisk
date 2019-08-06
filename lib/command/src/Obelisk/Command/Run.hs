@@ -128,12 +128,12 @@ parseCabalPackage dir = do
     then Just <$> liftIO (readUTF8File cabalFp)
     else if hasHpack
       then do
-        let decodeOptions = DecodeOptions hpackFp Nothing decodeYaml
+        let decodeOptions = DecodeOptions "hpack" hpackFp Nothing decodeYaml
         liftIO (readPackageConfig decodeOptions) >>= \case
           Left err -> do
             putLog Error $ T.pack $ "Failed to parse " <> hpackFp <> ": " <> err
             return Nothing
-          Right (DecodeResult hpackPackage _ _) -> do
+          Right (DecodeResult hpackPackage _ _ _) -> do
             return $ Just $ renderPackage [] hpackPackage
       else return Nothing
 
